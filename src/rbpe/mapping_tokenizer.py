@@ -323,6 +323,10 @@ class MappingTokenizer:
         current_segment = []
         current_is_mapped = None
 
+        # Handle single integer input
+        if isinstance(ids, int):
+            ids = [ids]
+        
         # pre-cast IDs if they are not already ints:
         ids = [int(i) for i in ids]
 
@@ -424,6 +428,10 @@ class MappingTokenizer:
     
     def decode(self, ids, **kwargs):
         """Decode token IDs to text by handling replacement characters with a sliding window approach."""
+        # Handle single integer input
+        if isinstance(ids, int):
+            ids = [ids]
+        
         # Try basic decode first
         basic_decoded = self.basic_decode(ids, **kwargs)
         if "�" not in basic_decoded:
