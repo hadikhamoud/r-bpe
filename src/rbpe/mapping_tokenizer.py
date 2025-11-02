@@ -437,6 +437,11 @@ class MappingTokenizer:
         if "�" not in basic_decoded:
             return basic_decoded
         
+        # For single tokens, return basic decode even if it has replacement chars
+        # because there's no additional context to improve decoding
+        if len(ids) == 1:
+            return basic_decoded
+        
         # Pre-cache frequently used attributes
         old_to_new_map = self.old_to_new_map
         replacement_character_map = self.replacement_character_map
