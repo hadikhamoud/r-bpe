@@ -2,6 +2,7 @@ from typing import List, Optional, Union
 from transformers import PreTrainedTokenizerBase, AutoTokenizer
 
 import os
+import shutil
 from pathlib import Path
 
 from .mapping_tokenizer import MappingTokenizer
@@ -276,6 +277,21 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             with open(os.path.join(meta_dir, "replacement_character_map.json"), "w") as f:
                 json.dump(self.custom_tokenizer_config['replacement_character_map'], f, indent=4)
             
+            # CRITICAL: Copy tokenization.py for trust_remote_code to work
+            # Find the tokenization.py file in the r-bpe package
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            rbpe_root = os.path.dirname(os.path.dirname(current_dir))  # Go up to r-bpe root
+            tokenization_source = os.path.join(rbpe_root, "tokenization.py")
+            
+            if os.path.exists(tokenization_source):
+                tokenization_dest = os.path.join(save_directory, "tokenization.py")
+                shutil.copy2(tokenization_source, tokenization_dest)
+            else:
+                # Fallback: try to find it relative to this file
+                alt_source = os.path.join(os.path.dirname(__file__), "..", "..", "tokenization.py")
+                if os.path.exists(alt_source):
+                    tokenization_dest = os.path.join(save_directory, "tokenization.py")
+                    shutil.copy2(alt_source, tokenization_dest)
 
             # Make mapping_tokenizer JSON-safe
             original_mapping_tokenizer = self.mapping_tokenizer
@@ -290,6 +306,78 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             # Ensure tokenizer_config.json contains relative pointers
             # Call parent to write standard files (including tokenizer_config.json)
             result = super().save_pretrained(save_directory, *args, **kwargs)
+
+            # POST-PROCESS tokenizer_config.json to ensure TGI compatibility
+            # This is critical for TGI to properly recognize EOS tokens and chat templates
+            tokenizer_config_path = os.path.join(save_directory, "tokenizer_config.json")
+            if os.path.exists(tokenizer_config_path):
+                with open(tokenizer_config_path, "r") as f:
+                    tokenizer_config = json.load(f)
+                
+                # CRITICAL: Set auto_map and tokenizer_class for trust_remote_code loading
+                # Without these, AutoTokenizer won't know to use the custom tokenization.py file
+                tokenizer_config['tokenizer_class'] = 'RBPETokenizer'
+                tokenizer_config['auto_map'] = {
+                    'AutoTokenizer': ['tokenization.RBPETokenizer', None]
+                }
+                
+                # Ensure critical fields are present for TGI
+                # TGI needs these to properly handle stopping criteria
+                if hasattr(self, 'eos_token'):
+                    tokenizer_config['eos_token'] = self.eos_token
+                if hasattr(self, 'eos_token_id'):
+                    tokenizer_config['eos_token_id'] = self.eos_token_id
+                if hasattr(self, 'bos_token'):
+                    tokenizer_config['bos_token'] = self.bos_token
+                if hasattr(self, 'bos_token_id'):
+                    tokenizer_config['bos_token_id'] = self.bos_token_id
+                if hasattr(self, 'pad_token'):
+                    tokenizer_config['pad_token'] = self.pad_token
+                if hasattr(self, 'pad_token_id'):
+                    tokenizer_config['pad_token_id'] = self.pad_token_id
+                
+                # Preserve chat_template if it exists
+                if hasattr(self, 'chat_template') and self.chat_template:
+                    tokenizer_config['chat_template'] = self.chat_template
+                
+                # Ensure add_eos_token is set for proper generation
+                if 'add_eos_token' not in tokenizer_config:
+                    tokenizer_config['add_eos_token'] = True
+                
+                # Write back the enhanced config
+                with open(tokenizer_config_path, "w") as f:
+                    json.dump(tokenizer_config, f, indent=2, ensure_ascii=False)
+            
+            # ALSO create generation_config.json for TGI
+            # TGI specifically looks for this file to configure stopping criteria
+            generation_config_path = os.path.join(save_directory, "generation_config.json")
+            generation_config = {}
+            
+            # Load existing generation_config if it exists
+            if os.path.exists(generation_config_path):
+                with open(generation_config_path, "r") as f:
+                    generation_config = json.load(f)
+            
+            # Set EOS token ID (TGI handles lists specially)
+            if hasattr(self, 'eos_token_id'):
+                # Use a list for compatibility with TGI's special handling
+                if isinstance(self.eos_token_id, (list, tuple)):
+                    generation_config['eos_token_id'] = list(self.eos_token_id)
+                else:
+                    generation_config['eos_token_id'] = [self.eos_token_id]
+            
+            if hasattr(self, 'bos_token_id'):
+                generation_config['bos_token_id'] = self.bos_token_id
+            if hasattr(self, 'pad_token_id'):
+                generation_config['pad_token_id'] = self.pad_token_id
+            
+            # Set reasonable defaults if not present
+            if 'max_length' not in generation_config:
+                generation_config['max_length'] = 2048
+            
+            # Write generation_config.json
+            with open(generation_config_path, "w") as f:
+                json.dump(generation_config, f, indent=2, ensure_ascii=False)
 
             # restore mapping_tokenizer object
             self.mapping_tokenizer = original_mapping_tokenizer
