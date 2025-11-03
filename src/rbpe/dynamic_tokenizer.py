@@ -311,7 +311,7 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             # This is critical for TGI to properly recognize EOS tokens and chat templates
             tokenizer_config_path = os.path.join(save_directory, "tokenizer_config.json")
             if os.path.exists(tokenizer_config_path):
-                with open(tokenizer_config_path, "r") as f:
+                with open(tokenizer_config_path, "r", encoding="utf-8") as f:
                     tokenizer_config = json.load(f)
                 
                 # CRITICAL: Set auto_map and tokenizer_class for trust_remote_code loading
@@ -345,7 +345,7 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
                     tokenizer_config['add_eos_token'] = True
                 
                 # Write back the enhanced config
-                with open(tokenizer_config_path, "w") as f:
+                with open(tokenizer_config_path, "w", encoding="utf-8") as f:
                     json.dump(tokenizer_config, f, indent=2, ensure_ascii=False)
             
             # ALSO create generation_config.json for TGI
@@ -355,16 +355,47 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             
             # Load existing generation_config if it exists
             if os.path.exists(generation_config_path):
-                with open(generation_config_path, "r") as f:
+                with open(generation_config_path, "r", encoding="utf-8") as f:
                     generation_config = json.load(f)
             
-            # Set EOS token ID (TGI handles lists specially)
+            # CRITICAL: Collect ALL EOS token IDs including chat template stop tokens
+            eos_token_ids = []
+            
+            # Add primary EOS token
             if hasattr(self, 'eos_token_id'):
-                # Use a list for compatibility with TGI's special handling
                 if isinstance(self.eos_token_id, (list, tuple)):
-                    generation_config['eos_token_id'] = list(self.eos_token_id)
+                    eos_token_ids.extend(self.eos_token_id)
                 else:
-                    generation_config['eos_token_id'] = [self.eos_token_id]
+                    eos_token_ids.append(self.eos_token_id)
+            
+            # IMPORTANT: Add all chat template special tokens that should stop generation
+            # These are common stop tokens in chat templates (e.g., Command-R, Llama, etc.)
+            if hasattr(self, 'added_tokens_decoder') or hasattr(self, 'get_vocab'):
+                vocab = self.get_vocab() if hasattr(self, 'get_vocab') else {}
+                
+                # List of potential stop tokens to check for
+                stop_token_candidates = [
+                    '<|START_OF_TURN_TOKEN|>',
+                    '<|END_OF_TURN_TOKEN|>',
+                    '<|USER_TOKEN|>',
+                    '<|CHATBOT_TOKEN|>',
+                    '<|SYSTEM_TOKEN|>',
+                    '<|end_of_turn|>',
+                    '<|im_end|>',
+                    '<|eot_id|>',
+                    '<|end|>',
+                    '<|endoftext|>',
+                ]
+                
+                for token_str in stop_token_candidates:
+                    if token_str in vocab:
+                        token_id = vocab[token_str]
+                        if token_id not in eos_token_ids:
+                            eos_token_ids.append(token_id)
+            
+            # Set EOS token IDs (TGI handles lists specially)
+            if eos_token_ids:
+                generation_config['eos_token_id'] = eos_token_ids
             
             if hasattr(self, 'bos_token_id'):
                 generation_config['bos_token_id'] = self.bos_token_id
@@ -376,7 +407,7 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
                 generation_config['max_length'] = 2048
             
             # Write generation_config.json
-            with open(generation_config_path, "w") as f:
+            with open(generation_config_path, "w", encoding="utf-8") as f:
                 json.dump(generation_config, f, indent=2, ensure_ascii=False)
 
             # restore mapping_tokenizer object
