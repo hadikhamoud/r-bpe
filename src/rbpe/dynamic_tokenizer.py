@@ -18,6 +18,7 @@ from transformers.tokenization_utils_base import (
     PreTokenizedInput,
     PreTokenizedInputPair,
     PreTrainedTokenizerBase,
+    PreTrainedTokenizer,
     EncodedInput,
     EncodedInputPair,
     SpecialTokensMixin,
@@ -33,7 +34,7 @@ def create_dynamic_tokenizer(
 ):
     """Creates a new tokenizer class that inherits from the base tokenizer class."""
 
-    class DynamicCustomTokenizer(base_class):
+    class DynamicCustomTokenizer(PreTrainedTokenizer):
         def __init__(self, mapping_tokenizer, *args, **kwargs):
             self.custom_tokenizer_config = config
             model_id = kwargs.get("model_id", None)
@@ -472,4 +473,3 @@ def create_dynamic_tokenizer(
             return result
 
     return DynamicCustomTokenizer
-
