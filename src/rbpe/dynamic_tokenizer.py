@@ -296,6 +296,41 @@ def create_dynamic_tokenizer(
         def convert_ids_to_tokens(self, ids):
             return self.mapping_tokenizer.convert_tok_ids_to_tokens(ids)
 
+        def _convert_token_to_id(self, token):
+            """
+            Converts a token (str) to an id using the vocab.
+            
+            Args:
+                token (str): The token to convert
+                
+            Returns:
+                int: The token ID
+            """
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                return self._base_tokenizer._convert_token_to_id(token)
+            # Fallback: check vocab directly
+            vocab = self.get_vocab()
+            if token in vocab:
+                return vocab[token]
+            return self.unk_token_id if hasattr(self, 'unk_token_id') else 0
+
+        def _convert_id_to_token(self, index):
+            """
+            Converts an index (integer) to a token (str) using the vocab.
+            
+            Args:
+                index (int): The index to convert
+                
+            Returns:
+                str: The token string
+            """
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                return self._base_tokenizer._convert_id_to_token(index)
+            # Fallback: create reverse vocab
+            vocab = self.get_vocab()
+            reverse_vocab = {v: k for k, v in vocab.items()}
+            return reverse_vocab.get(index, self.unk_token if hasattr(self, 'unk_token') else '')
+
         def save_pretrained(self, save_directory: str, *args, **kwargs):
             os.makedirs(save_directory, exist_ok=True)
 
