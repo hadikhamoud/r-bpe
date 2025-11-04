@@ -1,5 +1,5 @@
 from typing import List, Optional, Union
-from transformers import PreTrainedTokenizerBase, AutoTokenizer
+from transformers import PreTrainedTokenizerBase, AutoTokenizer, PreTrainedTokenizer
 
 import os
 import shutil
@@ -18,7 +18,6 @@ from transformers.tokenization_utils_base import (
     PreTokenizedInput,
     PreTokenizedInputPair,
     PreTrainedTokenizerBase,
-    PreTrainedTokenizer,
     EncodedInput,
     EncodedInputPair,
     SpecialTokensMixin,
