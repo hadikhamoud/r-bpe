@@ -341,6 +341,81 @@ def create_dynamic_tokenizer(
         def convert_ids_to_tokens(self, ids):
             return self.mapping_tokenizer.convert_tok_ids_to_tokens(ids)
 
+        def _encode_plus(
+            self,
+            text: Union[TextInput, PreTokenizedInput, EncodedInput],
+            text_pair: Optional[Union[TextInput, PreTokenizedInput, EncodedInput]] = None,
+            add_special_tokens: bool = True,
+            padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
+            truncation_strategy: TruncationStrategy = TruncationStrategy.DO_NOT_TRUNCATE,
+            max_length: Optional[int] = None,
+            stride: int = 0,
+            is_split_into_words: bool = False,
+            pad_to_multiple_of: Optional[int] = None,
+            return_tensors: Optional[Union[str, TensorType]] = None,
+            return_token_type_ids: Optional[bool] = None,
+            return_attention_mask: Optional[bool] = None,
+            return_overflowing_tokens: bool = False,
+            return_special_tokens_mask: bool = False,
+            return_offsets_mapping: bool = False,
+            return_length: bool = False,
+            verbose: bool = True,
+            **kwargs,
+        ) -> BatchEncoding:
+            """
+            Override _encode_plus to use mapping_tokenizer directly.
+            This ensures R-BPE logic is properly applied.
+            """
+            # Encode using mapping_tokenizer
+            encoded = self.mapping_tokenizer.encode(
+                text, add_special_tokens=False
+            )
+            
+            # Handle text pairs if provided
+            if text_pair:
+                encoded_pair = self.mapping_tokenizer.encode(
+                    text_pair, add_special_tokens=False
+                )
+                if add_special_tokens:
+                    encoded = (
+                        [self.bos_token_id]
+                        + encoded
+                        + [self.eos_token_id]
+                        + [self.bos_token_id]
+                        + encoded_pair
+                        + [self.eos_token_id]
+                    )
+                else:
+                    encoded = encoded + encoded_pair
+            elif add_special_tokens:
+                encoded = [self.bos_token_id] + encoded + [self.eos_token_id]
+            
+            # Create attention mask
+            attention_mask = [1] * len(encoded)
+            
+            # Handle truncation
+            if truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE and max_length is not None:
+                if len(encoded) > max_length:
+                    encoded = encoded[:max_length]
+                    attention_mask = attention_mask[:max_length]
+            
+            # Prepare the output dictionary
+            encoded_inputs = {
+                "input_ids": encoded,
+                "attention_mask": attention_mask,
+            }
+            
+            # Use parent's pad method for padding
+            return self.pad(
+                encoded_inputs,
+                padding=padding_strategy,
+                max_length=max_length,
+                pad_to_multiple_of=pad_to_multiple_of,
+                return_tensors=return_tensors,
+                return_attention_mask=return_attention_mask,
+                verbose=verbose,
+            )
+
         def _tokenize(self, text, **kwargs):
             """
             Tokenize a string into tokens.
@@ -369,8 +444,11 @@ def create_dynamic_tokenizer(
                 int: The token ID
             """
             if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
-                return self._base_tokenizer._convert_token_to_id(token)
-            # Fallback: check vocab directly
+                # Fast tokenizers don't have _convert_token_to_id, use vocab directly
+                if hasattr(self._base_tokenizer, '_convert_token_to_id'):
+                    return self._base_tokenizer._convert_token_to_id(token)
+            
+            # Fallback: check vocab directly (works for both slow and fast tokenizers)
             vocab = self.get_vocab()
             if token in vocab:
                 return vocab[token]
@@ -387,8 +465,11 @@ def create_dynamic_tokenizer(
                 str: The token string
             """
             if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
-                return self._base_tokenizer._convert_id_to_token(index)
-            # Fallback: create reverse vocab
+                # Fast tokenizers don't have _convert_id_to_token, use vocab directly
+                if hasattr(self._base_tokenizer, '_convert_id_to_token'):
+                    return self._base_tokenizer._convert_id_to_token(index)
+            
+            # Fallback: create reverse vocab (works for both slow and fast tokenizers)
             vocab = self.get_vocab()
             reverse_vocab = {v: k for k, v in vocab.items()}
             return reverse_vocab.get(index, self.unk_token if hasattr(self, 'unk_token') else '')
