@@ -84,6 +84,25 @@ def create_dynamic_tokenizer(
                 self.mapping_tokenizer.old_tokenizer, self._base_tokenizer, config
             )
 
+        def __getattr__(self, name):
+            """
+            Delegate attribute access to _base_tokenizer if the attribute is not found.
+            This ensures compatibility with any tokenizer interface requirements.
+            """
+            # Avoid infinite recursion by checking if _base_tokenizer exists
+            if name == '_base_tokenizer':
+                raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+            
+            # Try to get the attribute from _base_tokenizer
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                try:
+                    return getattr(self._base_tokenizer, name)
+                except AttributeError:
+                    pass
+            
+            # If still not found, raise AttributeError
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
         def _setup_special_tokens(self, tokenizer, source_tokenizer, config):
             """Helper function to set up special tokens for a tokenizer"""
             special_tokens_dict = {
@@ -128,6 +147,32 @@ def create_dynamic_tokenizer(
                 return self._base_tokenizer.vocab_size
             # Fallback
             return 0
+
+        @property
+        def all_special_ids(self):
+            """
+            Returns a list of all special token ids.
+            
+            Returns:
+                List[int]: List of special token IDs
+            """
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                return self._base_tokenizer.all_special_ids
+            # Fallback
+            return []
+
+        @property
+        def all_special_tokens(self):
+            """
+            Returns a list of all special tokens.
+            
+            Returns:
+                List[str]: List of special tokens
+            """
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                return self._base_tokenizer.all_special_tokens
+            # Fallback
+            return []
 
         def get_vocab_info(self):
             """
