@@ -24,45 +24,55 @@ from transformers.tokenization_utils_base import (
     TextInput,
     TextInputPair,
     TruncationStrategy,
-    PaddingStrategy
+    PaddingStrategy,
 )
 
-def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, config: dict):
+
+def create_dynamic_tokenizer(
+    base_class, mapping_tokenizer: MappingTokenizer, config: dict
+):
     """Creates a new tokenizer class that inherits from the base tokenizer class."""
-    
+
     class DynamicCustomTokenizer(base_class):
         def __init__(self, mapping_tokenizer, *args, **kwargs):
             self.custom_tokenizer_config = config
-            model_id = kwargs.get('model_id', None)
+            model_id = kwargs.get("model_id", None)
             if model_id:
                 # If it's a local folder, use its tokenizer.json
                 if os.path.isdir(model_id):
                     tok_json = os.path.join(model_id, "tokenizer.json")
                     if not os.path.isfile(tok_json):
-                        raise FileNotFoundError(f"Expected tokenizer.json in {model_id}")
-                    kwargs['tokenizer_file'] = tok_json
+                        raise FileNotFoundError(
+                            f"Expected tokenizer.json in {model_id}"
+                        )
+                    kwargs["tokenizer_file"] = tok_json
                 else:
                     # Fall back to Hub download
                     tokenizer_path = hf_hub_download(
                         repo_id=model_id,
                         filename="tokenizer.json",
                         cache_dir=os.path.join(
-                            os.getenv('HF_HOME', os.path.expanduser('~/.cache/huggingface')), 'hub'
-                        )
+                            os.getenv(
+                                "HF_HOME", os.path.expanduser("~/.cache/huggingface")
+                            ),
+                            "hub",
+                        ),
                     )
-                    kwargs['tokenizer_file'] = tokenizer_path
+                    kwargs["tokenizer_file"] = tokenizer_path
             else:
                 raise ValueError("Cannot create dynamic tokenizer without a model_id")
-            
+
             # __init__ of the parent class is not enough to have the tokenizer setup correctly, usually
-            # the tokenizer is setup correctly because it is created using the from_pretrained method but since we are using 
-            # a custom tokenizer we need to do this step manually by creating the pretrained tokenizer instance and then copying 
+            # the tokenizer is setup correctly because it is created using the from_pretrained method but since we are using
+            # a custom tokenizer we need to do this step manually by creating the pretrained tokenizer instance and then copying
             # all attributes from the pretrained tokenizer
 
             # create the pretrained tokenizer instance
             self.mapping_tokenizer = mapping_tokenizer
-            self._base_tokenizer = AutoTokenizer.from_pretrained(model_id)
-            
+            self._base_tokenizer = AutoTokenizer.from_pretrained(
+                model_id, use_fast=False
+            )
+
             # initialize parent class normally
             super().__init__(*args, **kwargs)
 
@@ -72,45 +82,51 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
 
             # set up special tokens for both custom and old tokenizers
             self._setup_special_tokens(self, self._base_tokenizer, config)
-            self._setup_special_tokens(self.mapping_tokenizer.old_tokenizer, self._base_tokenizer, config)
+            self._setup_special_tokens(
+                self.mapping_tokenizer.old_tokenizer, self._base_tokenizer, config
+            )
 
         def _setup_special_tokens(self, tokenizer, source_tokenizer, config):
             """Helper function to set up special tokens for a tokenizer"""
             special_tokens_dict = {
-                'pad_token': config.get('pad_token') or source_tokenizer.pad_token,
-                'eos_token': config.get('eos_token') or source_tokenizer.eos_token,
-                'bos_token': config.get('bos_token') or source_tokenizer.bos_token,
-                'unk_token': config.get('unk_token') or source_tokenizer.unk_token,
-                'mask_token': config.get('mask_token') or source_tokenizer.mask_token,
-                'sep_token': config.get('sep_token') or source_tokenizer.sep_token,
-                'cls_token': config.get('cls_token') or source_tokenizer.cls_token,
+                "pad_token": config.get("pad_token") or source_tokenizer.pad_token,
+                "eos_token": config.get("eos_token") or source_tokenizer.eos_token,
+                "bos_token": config.get("bos_token") or source_tokenizer.bos_token,
+                "unk_token": config.get("unk_token") or source_tokenizer.unk_token,
+                "mask_token": config.get("mask_token") or source_tokenizer.mask_token,
+                "sep_token": config.get("sep_token") or source_tokenizer.sep_token,
+                "cls_token": config.get("cls_token") or source_tokenizer.cls_token,
             }
-            
+
             # clean up None values
-            special_tokens_dict = {k: v for k, v in special_tokens_dict.items() if v is not None}
+            special_tokens_dict = {
+                k: v for k, v in special_tokens_dict.items() if v is not None
+            }
 
             # add special tokens
             tokenizer.add_special_tokens(special_tokens_dict)
-        
+
         def get_vocab_info(self):
             """
             Returns information about vocabulary sizes and changes.
-            
+
             Returns:
                 dict: Contains:
                     - original_vocab_size: Size of the original tokenizer's vocab
                     - current_vocab_size: Current size of the vocab
                     - new_tokens_count: Number of new tokens added
             """
-            original_tokenizer = AutoTokenizer.from_pretrained(self.mapping_tokenizer.old_tokenizer_model_id)
+            original_tokenizer = AutoTokenizer.from_pretrained(
+                self.mapping_tokenizer.old_tokenizer_model_id, use_fast=False
+            )
             original_vocab_size = len(original_tokenizer.get_vocab())
             current_vocab_size = len(self.get_vocab())
             new_tokens_count = current_vocab_size - original_vocab_size
-            
+
             return {
                 "original_vocab_size": original_vocab_size,
                 "current_vocab_size": current_vocab_size,
-                "new_tokens_count": new_tokens_count
+                "new_tokens_count": new_tokens_count,
             }
 
         def _batch_encode_plus(
@@ -150,46 +166,54 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
                 batch_text_pair = None
 
             # Encode all texts
-            encoded_inputs = {
-                "input_ids": [],
-                "attention_mask": []
-            }
-            
+            encoded_inputs = {"input_ids": [], "attention_mask": []}
+
             for i, text in enumerate(batch_text):
                 # Get the text pair if it exists
                 text_pair = batch_text_pair[i] if batch_text_pair is not None else None
-                
+
                 # Encode single text
-                encoded = self.mapping_tokenizer.encode(text, add_special_tokens=add_special_tokens)
+                encoded = self.mapping_tokenizer.encode(
+                    text, add_special_tokens=add_special_tokens
+                )
                 if text_pair:
-                    encoded_pair = self.mapping_tokenizer.encode(text_pair, add_special_tokens=add_special_tokens)
+                    encoded_pair = self.mapping_tokenizer.encode(
+                        text_pair, add_special_tokens=add_special_tokens
+                    )
                     if add_special_tokens:
                         encoded = (
-                            [self.bos_token_id] + 
-                            encoded + 
-                            [self.eos_token_id] + 
-                            [self.bos_token_id] + 
-                            encoded_pair + 
-                            [self.eos_token_id]
+                            [self.bos_token_id]
+                            + encoded
+                            + [self.eos_token_id]
+                            + [self.bos_token_id]
+                            + encoded_pair
+                            + [self.eos_token_id]
                         )
                 elif add_special_tokens:
                     encoded = [self.bos_token_id] + encoded + [self.eos_token_id]
-                    
+
                 encoded_inputs["input_ids"].append(encoded)
                 encoded_inputs["attention_mask"].append([1] * len(encoded))
-            
+
             # truncate sequences using the parent class's method
-            if truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE and max_length is not None:
+            if (
+                truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE
+                and max_length is not None
+            ):
                 for i, input_ids in enumerate(encoded_inputs["input_ids"]):
                     total_len = len(input_ids)
-                    encoded_inputs["input_ids"][i], pair_ids, overflowing_tokens = self.truncate_sequences(
-                        input_ids,
-                        num_tokens_to_remove=total_len - max_length,
-                        truncation_strategy=truncation_strategy,
-                        stride=stride,
+                    encoded_inputs["input_ids"][i], pair_ids, overflowing_tokens = (
+                        self.truncate_sequences(
+                            input_ids,
+                            num_tokens_to_remove=total_len - max_length,
+                            truncation_strategy=truncation_strategy,
+                            stride=stride,
+                        )
                     )
-                    encoded_inputs["attention_mask"][i] = [1] * len(encoded_inputs["input_ids"][i])
-                
+                    encoded_inputs["attention_mask"][i] = [1] * len(
+                        encoded_inputs["input_ids"][i]
+                    )
+
                 if return_overflowing_tokens:
                     encoded_inputs["overflowing_tokens"] = overflowing_tokens
                     encoded_inputs["num_truncated_tokens"] = total_len - max_length
@@ -206,7 +230,7 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             )
 
             return batch_outputs
-        
+
         def _decode(
             self,
             token_ids: Union[int, List[int]],
@@ -214,12 +238,23 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             clean_up_tokenization_spaces: bool = None,
             **kwargs,
         ) -> str:
-            self._decode_use_source_tokenizer = kwargs.pop("use_source_tokenizer", False)
+            self._decode_use_source_tokenizer = kwargs.pop(
+                "use_source_tokenizer", False
+            )
             # Handle batch input
-            if isinstance(token_ids, list) and token_ids and isinstance(token_ids[0], list):
-                return [self._decode(ids, skip_special_tokens, clean_up_tokenization_spaces) for ids in token_ids]
+            if (
+                isinstance(token_ids, list)
+                and token_ids
+                and isinstance(token_ids[0], list)
+            ):
+                return [
+                    self._decode(ids, skip_special_tokens, clean_up_tokenization_spaces)
+                    for ids in token_ids
+                ]
 
-            text = self.mapping_tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
+            text = self.mapping_tokenizer.decode(
+                token_ids, skip_special_tokens=skip_special_tokens
+            )
 
             clean_up_tokenization_spaces = (
                 clean_up_tokenization_spaces
@@ -234,7 +269,7 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
 
         def convert_tokens_to_string(self, tokens: List[str]) -> str:
             return self.mapping_tokenizer.decode(tokens)
-        
+
         def convert_ids_to_tokens(self, ids):
             return self.mapping_tokenizer.convert_tok_ids_to_tokens(ids)
 
@@ -252,43 +287,61 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
 
             # Save OLD tokenizer snapshot (so loading is offline/self-contained)
             self.mapping_tokenizer.old_tokenizer.save_pretrained(old_tok_dir)
-            
+
             # Save metadata files
             meta_dir = os.path.join(save_directory, "metadata")
             os.makedirs(meta_dir, exist_ok=True)
 
             # Save token classifier data
             with open(os.path.join(meta_dir, "token_id_language_map.json"), "w") as f:
-                json.dump(self.custom_tokenizer_config['token_id_language_map'], f, indent=4)
-            
+                json.dump(
+                    self.custom_tokenizer_config["token_id_language_map"], f, indent=4
+                )
+
             with open(os.path.join(meta_dir, "token_text_language_map.json"), "w") as f:
-                json.dump(self.custom_tokenizer_config['token_text_language_map'], f, indent=4)
-            
+                json.dump(
+                    self.custom_tokenizer_config["token_text_language_map"], f, indent=4
+                )
+
             with open(os.path.join(meta_dir, "vocabulary_languages.txt"), "w") as f:
-                sorted_all_languages = sorted(self.custom_tokenizer_config['vocabulary_languages'], key=lambda x: x[1], reverse=False)
+                sorted_all_languages = sorted(
+                    self.custom_tokenizer_config["vocabulary_languages"],
+                    key=lambda x: x[1],
+                    reverse=False,
+                )
                 for language, id_count in sorted_all_languages:
                     f.write(f"{language}\t{id_count}\n")
-            
+
             # Save mapping tokenizer data
             with open(os.path.join(meta_dir, "new_to_old_map.json"), "w") as f:
-                json.dump(self.custom_tokenizer_config['new_to_old_map'], f, indent=4)
+                json.dump(self.custom_tokenizer_config["new_to_old_map"], f, indent=4)
             with open(os.path.join(meta_dir, "old_to_new_map.json"), "w") as f:
-                json.dump(self.custom_tokenizer_config['old_to_new_map'], f, indent=4)
-            with open(os.path.join(meta_dir, "replacement_character_map.json"), "w") as f:
-                json.dump(self.custom_tokenizer_config['replacement_character_map'], f, indent=4)
-            
+                json.dump(self.custom_tokenizer_config["old_to_new_map"], f, indent=4)
+            with open(
+                os.path.join(meta_dir, "replacement_character_map.json"), "w"
+            ) as f:
+                json.dump(
+                    self.custom_tokenizer_config["replacement_character_map"],
+                    f,
+                    indent=4,
+                )
+
             # CRITICAL: Copy tokenization.py for trust_remote_code to work
             # Find the tokenization.py file in the r-bpe package
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            rbpe_root = os.path.dirname(os.path.dirname(current_dir))  # Go up to r-bpe root
+            rbpe_root = os.path.dirname(
+                os.path.dirname(current_dir)
+            )  # Go up to r-bpe root
             tokenization_source = os.path.join(rbpe_root, "tokenization.py")
-            
+
             if os.path.exists(tokenization_source):
                 tokenization_dest = os.path.join(save_directory, "tokenization.py")
                 shutil.copy2(tokenization_source, tokenization_dest)
             else:
                 # Fallback: try to find it relative to this file
-                alt_source = os.path.join(os.path.dirname(__file__), "..", "..", "tokenization.py")
+                alt_source = os.path.join(
+                    os.path.dirname(__file__), "..", "..", "tokenization.py"
+                )
                 if os.path.exists(alt_source):
                     tokenization_dest = os.path.join(save_directory, "tokenization.py")
                     shutil.copy2(alt_source, tokenization_dest)
@@ -298,10 +351,10 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             mapping_tokenizer_json = self.mapping_tokenizer.to_json()
             self.mapping_tokenizer = mapping_tokenizer_json
 
-            if not hasattr(self, 'init_kwargs'):
+            if not hasattr(self, "init_kwargs"):
                 self.init_kwargs = {}
-            self.init_kwargs['mapping_tokenizer'] = mapping_tokenizer_json
-            self.init_kwargs['custom_tokenizer_config'] = self.custom_tokenizer_config
+            self.init_kwargs["mapping_tokenizer"] = mapping_tokenizer_json
+            self.init_kwargs["custom_tokenizer_config"] = self.custom_tokenizer_config
 
             # Ensure tokenizer_config.json contains relative pointers
             # Call parent to write standard files (including tokenizer_config.json)
@@ -309,103 +362,107 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
 
             # POST-PROCESS tokenizer_config.json to ensure TGI compatibility
             # This is critical for TGI to properly recognize EOS tokens and chat templates
-            tokenizer_config_path = os.path.join(save_directory, "tokenizer_config.json")
+            tokenizer_config_path = os.path.join(
+                save_directory, "tokenizer_config.json"
+            )
             if os.path.exists(tokenizer_config_path):
                 with open(tokenizer_config_path, "r", encoding="utf-8") as f:
                     tokenizer_config = json.load(f)
-                
+
                 # CRITICAL: Set auto_map and tokenizer_class for trust_remote_code loading
                 # Without these, AutoTokenizer won't know to use the custom tokenization.py file
-                tokenizer_config['tokenizer_class'] = 'RBPETokenizer'
-                tokenizer_config['auto_map'] = {
-                    'AutoTokenizer': ['tokenization.RBPETokenizer', None]
+                tokenizer_config["tokenizer_class"] = "RBPETokenizer"
+                tokenizer_config["auto_map"] = {
+                    "AutoTokenizer": ["tokenization.RBPETokenizer", None]
                 }
-                
+
                 # Ensure critical fields are present for TGI
                 # TGI needs these to properly handle stopping criteria
-                if hasattr(self, 'eos_token'):
-                    tokenizer_config['eos_token'] = self.eos_token
-                if hasattr(self, 'eos_token_id'):
-                    tokenizer_config['eos_token_id'] = self.eos_token_id
-                if hasattr(self, 'bos_token'):
-                    tokenizer_config['bos_token'] = self.bos_token
-                if hasattr(self, 'bos_token_id'):
-                    tokenizer_config['bos_token_id'] = self.bos_token_id
-                if hasattr(self, 'pad_token'):
-                    tokenizer_config['pad_token'] = self.pad_token
-                if hasattr(self, 'pad_token_id'):
-                    tokenizer_config['pad_token_id'] = self.pad_token_id
-                
+                if hasattr(self, "eos_token"):
+                    tokenizer_config["eos_token"] = self.eos_token
+                if hasattr(self, "eos_token_id"):
+                    tokenizer_config["eos_token_id"] = self.eos_token_id
+                if hasattr(self, "bos_token"):
+                    tokenizer_config["bos_token"] = self.bos_token
+                if hasattr(self, "bos_token_id"):
+                    tokenizer_config["bos_token_id"] = self.bos_token_id
+                if hasattr(self, "pad_token"):
+                    tokenizer_config["pad_token"] = self.pad_token
+                if hasattr(self, "pad_token_id"):
+                    tokenizer_config["pad_token_id"] = self.pad_token_id
+
                 # Preserve chat_template if it exists
-                if hasattr(self, 'chat_template') and self.chat_template:
-                    tokenizer_config['chat_template'] = self.chat_template
-                
+                if hasattr(self, "chat_template") and self.chat_template:
+                    tokenizer_config["chat_template"] = self.chat_template
+
                 # Ensure add_eos_token is set for proper generation
-                if 'add_eos_token' not in tokenizer_config:
-                    tokenizer_config['add_eos_token'] = True
-                
+                if "add_eos_token" not in tokenizer_config:
+                    tokenizer_config["add_eos_token"] = True
+
                 # Write back the enhanced config
                 with open(tokenizer_config_path, "w", encoding="utf-8") as f:
                     json.dump(tokenizer_config, f, indent=2, ensure_ascii=False)
-            
+
             # ALSO create generation_config.json for TGI
             # TGI specifically looks for this file to configure stopping criteria
-            generation_config_path = os.path.join(save_directory, "generation_config.json")
+            generation_config_path = os.path.join(
+                save_directory, "generation_config.json"
+            )
             generation_config = {}
-            
+
             # Load existing generation_config if it exists
             if os.path.exists(generation_config_path):
                 with open(generation_config_path, "r", encoding="utf-8") as f:
                     generation_config = json.load(f)
-            
+
             # CRITICAL: Collect ALL EOS token IDs including chat template stop tokens
             eos_token_ids = []
-            
+
             # Add primary EOS token
-            if hasattr(self, 'eos_token_id'):
+            if hasattr(self, "eos_token_id"):
                 if isinstance(self.eos_token_id, (list, tuple)):
                     eos_token_ids.extend(self.eos_token_id)
                 else:
                     eos_token_ids.append(self.eos_token_id)
-            
+
             # IMPORTANT: Add all chat template special tokens that should stop generation
             # These are common stop tokens in chat templates (e.g., Command-R, Llama, etc.)
-            if hasattr(self, 'added_tokens_decoder') or hasattr(self, 'get_vocab'):
-                vocab = self.get_vocab() if hasattr(self, 'get_vocab') else {}
-                
+            if hasattr(self, "added_tokens_decoder") or hasattr(self, "get_vocab"):
+                vocab = self.get_vocab() if hasattr(self, "get_vocab") else {}
+
                 # List of potential stop tokens to check for
                 stop_token_candidates = [
-                    '<|START_OF_TURN_TOKEN|>',
-                    '<|END_OF_TURN_TOKEN|>',
-                    '<|USER_TOKEN|>',
-                    '<|CHATBOT_TOKEN|>',
-                    '<|SYSTEM_TOKEN|>',
-                    '<|end_of_turn|>',
-                    '<|im_end|>',
-                    '<|eot_id|>',
-                    '<|end|>',
-                    '<|endoftext|>',
+                    "<|START_OF_TURN_TOKEN|>",
+                    "<|END_OF_TURN_TOKEN|>",
+                    "<|USER_TOKEN|>",
+                    "<|CHATBOT_TOKEN|>",
+                    "<|SYSTEM_TOKEN|>",
+                    "<|end_of_turn|>",
+                    "<|im_end|>",
+                    "<|eot_id|>",
+                    "<|end|>",
+                    "<|endoftext|>",
                 ]
-                
+
                 for token_str in stop_token_candidates:
                     if token_str in vocab:
                         token_id = vocab[token_str]
                         if token_id not in eos_token_ids:
                             eos_token_ids.append(token_id)
-            
+
             # Set EOS token IDs (TGI handles lists specially)
             if eos_token_ids:
-                generation_config['eos_token_id'] = eos_token_ids
-            
-            if hasattr(self, 'bos_token_id'):
-                generation_config['bos_token_id'] = self.bos_token_id
-            if hasattr(self, 'pad_token_id'):
-                generation_config['pad_token_id'] = self.pad_token_id
-            
+                generation_config["eos_token_id"] = eos_token_ids
+
+            if hasattr(self, "bos_token_id"):
+                generation_config["bos_token_id"] = self.bos_token_id
+            if hasattr(self, "pad_token_id"):
+                generation_config["pad_token_id"] = self.pad_token_id
+
             # Set reasonable defaults if not present
-            if 'max_length' not in generation_config:
-                generation_config['max_length'] = 2048
-            
+            if "max_length" not in generation_config:
+                generation_config["max_length"] = 2048
+
             # Write generation_config.json
             with open(generation_config_path, "w", encoding="utf-8") as f:
                 json.dump(generation_config, f, indent=2, ensure_ascii=False)
@@ -415,3 +472,4 @@ def create_dynamic_tokenizer(base_class, mapping_tokenizer: MappingTokenizer, co
             return result
 
     return DynamicCustomTokenizer
+
