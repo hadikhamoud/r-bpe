@@ -221,9 +221,7 @@ class RBPETokenizer:
         # Create mapping layer
         logger.info("Creating mapping tokenizer...")
 
-        self.old_tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id, use_fast=False
-        )
+        self.old_tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.mapping_tokenizer = MappingTokenizer(
             new_tokenizer=self.new_tokenizer,
             old_tokenizer=self.old_tokenizer,
@@ -253,9 +251,7 @@ class RBPETokenizer:
 
         # Dynamically create the final R-BPE tokenizer based on the original tokenizer's HuggingFace class
         logger.info("Creating final custom tokenizer...")
-        base_tokenizer_class = AutoTokenizer.from_pretrained(
-            self.model_id, use_fast=False
-        ).__class__
+        base_tokenizer_class = AutoTokenizer.from_pretrained(self.model_id).__class__
         dynamic_tokenizer_class = create_dynamic_tokenizer(
             base_tokenizer_class, self.mapping_tokenizer, dynamic_tokenizer_config
         )
@@ -290,7 +286,7 @@ class RBPETokenizer:
         )
 
         base_tokenizer_class = AutoTokenizer.from_pretrained(
-            custom_tokenizer_config["model_id"], use_fast=False
+            custom_tokenizer_config["model_id"]
         ).__class__
         dynamic_tokenizer_class = create_dynamic_tokenizer(
             base_tokenizer_class, mapping_tokenizer, custom_tokenizer_config

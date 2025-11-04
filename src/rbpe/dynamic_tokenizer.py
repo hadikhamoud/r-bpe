@@ -70,9 +70,7 @@ def create_dynamic_tokenizer(
 
             # create the pretrained tokenizer instance
             self.mapping_tokenizer = mapping_tokenizer
-            self._base_tokenizer = AutoTokenizer.from_pretrained(
-                model_id, use_fast=False
-            )
+            self._base_tokenizer = AutoTokenizer.from_pretrained(model_id)
 
             # initialize parent class normally
             super().__init__(*args, **kwargs)
@@ -118,7 +116,7 @@ def create_dynamic_tokenizer(
                     - new_tokens_count: Number of new tokens added
             """
             original_tokenizer = AutoTokenizer.from_pretrained(
-                self.mapping_tokenizer.old_tokenizer_model_id, use_fast=False
+                self.mapping_tokenizer.old_tokenizer_model_id
             )
             original_vocab_size = len(original_tokenizer.get_vocab())
             current_vocab_size = len(self.get_vocab())
