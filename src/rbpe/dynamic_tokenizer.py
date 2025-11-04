@@ -104,6 +104,31 @@ def create_dynamic_tokenizer(
             # add special tokens
             tokenizer.add_special_tokens(special_tokens_dict)
 
+        def get_vocab(self):
+            """
+            Returns the vocabulary as a dictionary of token to token_id.
+            
+            Returns:
+                dict: A dictionary mapping tokens (str) to their IDs (int)
+            """
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                return self._base_tokenizer.get_vocab()
+            # Fallback for when called before _base_tokenizer is set
+            return {}
+
+        @property
+        def vocab_size(self):
+            """
+            Returns the size of the vocabulary.
+            
+            Returns:
+                int: Size of the vocabulary
+            """
+            if hasattr(self, '_base_tokenizer') and self._base_tokenizer is not None:
+                return self._base_tokenizer.vocab_size
+            # Fallback
+            return 0
+
         def get_vocab_info(self):
             """
             Returns information about vocabulary sizes and changes.
