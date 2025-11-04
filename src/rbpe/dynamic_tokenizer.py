@@ -338,8 +338,36 @@ def create_dynamic_tokenizer(
         def convert_tokens_to_string(self, tokens: List[str]) -> str:
             return self.mapping_tokenizer.decode(tokens)
 
-        def convert_ids_to_tokens(self, ids):
-            return self.mapping_tokenizer.convert_tok_ids_to_tokens(ids)
+        def convert_ids_to_tokens(self, ids, skip_special_tokens=False):
+            """
+            Convert token IDs to tokens.
+            
+            Args:
+                ids: Token ID or list of token IDs
+                skip_special_tokens: Whether to skip special tokens (default: False)
+                
+            Returns:
+                Token string or list of token strings
+            """
+            # Handle single ID
+            if isinstance(ids, int):
+                ids = [ids]
+                single_id = True
+            else:
+                single_id = False
+            
+            # Filter special tokens if requested
+            if skip_special_tokens and hasattr(self, 'all_special_ids'):
+                special_ids = set(self.all_special_ids)
+                ids = [id for id in ids if id not in special_ids]
+            
+            # Convert using mapping tokenizer
+            tokens = self.mapping_tokenizer.convert_tok_ids_to_tokens(ids)
+            
+            # Return single token if input was single ID
+            if single_id:
+                return tokens[0] if tokens else ''
+            return tokens
 
         def _encode_plus(
             self,
