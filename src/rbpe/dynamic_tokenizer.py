@@ -341,6 +341,23 @@ def create_dynamic_tokenizer(
         def convert_ids_to_tokens(self, ids):
             return self.mapping_tokenizer.convert_tok_ids_to_tokens(ids)
 
+        def _tokenize(self, text, **kwargs):
+            """
+            Tokenize a string into tokens.
+            This method is called by the parent class's tokenize() method.
+            
+            Args:
+                text (str): The text to tokenize
+                
+            Returns:
+                List[str]: List of tokens
+            """
+            # Encode the text to get token IDs
+            token_ids = self.mapping_tokenizer.encode(text, add_special_tokens=False)
+            # Convert IDs back to tokens
+            tokens = self.convert_ids_to_tokens(token_ids)
+            return tokens
+
         def _convert_token_to_id(self, token):
             """
             Converts a token (str) to an id using the vocab.
