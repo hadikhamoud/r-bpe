@@ -336,7 +336,21 @@ def create_dynamic_tokenizer(
                 return text
 
         def convert_tokens_to_string(self, tokens: List[str]) -> str:
-            return self.mapping_tokenizer.decode(tokens)
+            """
+            Convert a list of tokens (strings) to a single string.
+            
+            Since our convert_ids_to_tokens() returns decoded text chunks,
+            we just need to join them together.
+            
+            Args:
+                tokens: List of token strings (decoded text chunks)
+                
+            Returns:
+                Decoded text string
+            """
+            # Our convert_ids_to_tokens returns decoded text chunks,
+            # so we just join them
+            return ''.join(tokens)
 
         def convert_ids_to_tokens(self, ids, skip_special_tokens=False):
             """
